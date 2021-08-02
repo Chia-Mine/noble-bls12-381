@@ -1,6 +1,11 @@
-# noble-bls12-381 ![Node CI](https://github.com/paulmillr/noble-secp256k1/workflows/Node%20CI/badge.svg) [![code style: prettier](https://img.shields.io/badge/code_style-prettier-ff69b4.svg?style=flat-square)](https://github.com/prettier/prettier)
+# Synchronous version of [noble-bls12-381](https://github.com/paulmillr/noble-bls12-381)
+Original `noble-bls12-381` is asynchronous because SHA256 module used internally is async function.  
+I replaced the async SHA256 function to synchronous one from `fast-sha256-js`.  
+There might be performance drop because `fast-sha256-js`'s SHA256 is pure javascript while original SHA256 is executed in native context.
 
-**[Fastest](#speed)** implementation of BLS12-381 in a scripting language. The pairing-friendly Barreto-Lynn-Scott elliptic curve construction allows to:
+-------------------
+
+Fully synchronous javascript implementation of BLS12-381 in a scripting language. The pairing-friendly Barreto-Lynn-Scott elliptic curve construction allows to:
 
 - Construct [zk-SNARKs](https://z.cash/technology/zksnarks/) at the 128-bit security
 - Use [threshold signatures](https://medium.com/snigirev.stepan/bls-signatures-better-than-schnorr-5a7fe30ea716),
@@ -11,30 +16,18 @@ Compatible with Algorand, Chia, Dfinity, Ethereum, FIL, Zcash. Matches specs [pa
 
 To learn more about internals, check out [BLS12-381 for the rest of us](https://hackmd.io/@benjaminion/bls12-381) & [key concepts of pairings](https://medium.com/@alonmuroch_65570/bls-signatures-part-2-key-concepts-of-pairings-27a8a9533d0c). To try it live, see [the online demo](https://paulmillr.com/ecc) & [threshold sigs demo](https://genthresh.com).
 
-### This library belongs to *noble* crypto
-
-> **noble-crypto** — high-security, easily auditable set of contained cryptographic libraries and tools.
-
-- Just two files
-- No dependencies
-- Easily auditable TypeScript/JS code
-- Supported in all major browsers and stable node.js versions
-- All releases are signed with PGP keys
-- Check out all libraries:
-  [secp256k1](https://github.com/paulmillr/noble-secp256k1),
-  [ed25519](https://github.com/paulmillr/noble-ed25519),
-  [bls12-381](https://github.com/paulmillr/noble-bls12-381),
-  [ripemd160](https://github.com/paulmillr/noble-ripemd160)
-
 ## Usage
 
-Use NPM in node.js / browser, or include single file from
-[GitHub's releases page](https://github.com/paulmillr/noble-bls12-381/releases):
+Use NPM in node.js / browser.
 
-> npm install noble-bls12-381
+```shell
+npm install @chiamine/bls12-381-sync
+# or
+yarn add @chiamine/bls12-381-sync
+```
 
 ```js
-const bls = require('noble-bls12-381');
+const bls = require('@chiamine/bls12-381-sync');
 // if you're using single file, use global variable nobleBls12381
 
 // You can use Uint8Array, or hex string for readability
@@ -47,36 +40,34 @@ const privateKeys = [
 const message = '64726e3da8';
 const messages = ['d2', '0d98', '05caf3'];
 
-(async () => {
-  const publicKey = bls.getPublicKey(privateKey);
-  const publicKeys = privateKeys.map(bls.getPublicKey);
+const publicKey = bls.getPublicKey(privateKey);
+const publicKeys = privateKeys.map(bls.getPublicKey);
 
-  const signature = await bls.sign(message, privateKey);
-  const isCorrect = await bls.verify(signature, message, publicKey);
-  console.log('key', publicKey);
-  console.log('signature', signature);
-  console.log('is correct:', isCorrect);
+const signature = bls.sign(message, privateKey);
+const isCorrect = bls.verify(signature, message, publicKey);
+console.log('key', publicKey);
+console.log('signature', signature);
+console.log('is correct:', isCorrect);
 
-  // Sign 1 msg with 3 keys
-  const signatures2 = await Promise.all(privateKeys.map(p => bls.sign(message, p)));
-  const aggPubKey2 = bls.aggregatePublicKeys(publicKeys);
-  const aggSignature2 = bls.aggregateSignatures(signatures2);
-  const isCorrect2 = await bls.verify(aggSignature2, message, aggPubKey2);
-  console.log();
-  console.log('signatures are', signatures2);
-  console.log('merged to one signature', aggSignature2);
-  console.log('is correct:', isCorrect2);
+// Sign 1 msg with 3 keys
+const signatures2 = privateKeys.map(p => bls.sign(message, p));
+const aggPubKey2 = bls.aggregatePublicKeys(publicKeys);
+const aggSignature2 = bls.aggregateSignatures(signatures2);
+const isCorrect2 = bls.verify(aggSignature2, message, aggPubKey2);
+console.log();
+console.log('signatures are', signatures2);
+console.log('merged to one signature', aggSignature2);
+console.log('is correct:', isCorrect2);
 
-  // Sign 3 msgs with 3 keys
-  const signatures3 = await Promise.all(privateKeys.map((p, i) => bls.sign(messages[i], p)));
-  const aggSignature3 = bls.aggregateSignatures(signatures3);
-  const isCorrect3 = await bls.verifyBatch(aggSignature3, messages, publicKeys);
-  console.log();
-  console.log('keys', publicKeys);
-  console.log('signatures', signatures3);
-  console.log('merged to one signature', aggSignature3);
-  console.log('is correct:', isCorrect3);
-})();
+// Sign 3 msgs with 3 keys
+const signatures3 = privateKeys.map((p, i) => bls.sign(messages[i], p));
+const aggSignature3 = bls.aggregateSignatures(signatures3);
+const isCorrect3 = bls.verifyBatch(aggSignature3, messages, publicKeys);
+console.log();
+console.log('keys', publicKeys);
+console.log('signatures', signatures3);
+console.log('merged to one signature', aggSignature3);
+console.log('is correct:', isCorrect3);
 ```
 
 ## API
@@ -103,9 +94,9 @@ function getPublicKey(privateKey: string): string;
 
 ##### `sign(message, privateKey)`
 ```typescript
-function sign(message: Uint8Array, privateKey: Uint8Array): Promise<Uint8Array>;
-function sign(message: string, privateKey: string): Promise<Uint8Array>;
-function sign(message: PointG2, privateKey: Uint8Array | string | bigint): Promise<PointG2>;
+function sign(message: Uint8Array, privateKey: Uint8Array): Uint8Array;
+function sign(message: string, privateKey: string): Uint8Array;
+function sign(message: PointG2, privateKey: Uint8Array | string | bigint): PointG2;
 ```
 - `message: Uint8Array | string` - message which would be hashed & signed
 - `privateKey: Uint8Array | string | bigint` - private key which will sign the hash
@@ -119,12 +110,12 @@ function verify(
   signature: Uint8Array | string | PointG2,
   message: Uint8Array | string | PointG2,
   publicKey: Uint8Array | string | PointG1
-): Promise<boolean>
+): boolean
 ```
 - `signature: Uint8Array | string` - object returned by the `sign` or `aggregateSignatures` function
 - `message: Uint8Array | string` - message hash that needs to be verified
 - `publicKey: Uint8Array | string` - e.g. that was generated from `privateKey` by `getPublicKey`
-- Returns `Promise<boolean>`: `true` / `false` whether the signature matches hash
+- Returns `boolean`: `true` / `false` whether the signature matches hash
 
 ##### `aggregatePublicKeys(publicKeys)`
 ```typescript
@@ -150,12 +141,12 @@ function verifyBatch(
   signature: Uint8Array | string | PointG2,
   messages: (Uint8Array | string | PointG2)[],
   publicKeys: (Uint8Array | string | PointG1)[]
-): Promise<boolean>
+): boolean
 ```
 - `signature: Uint8Array | string | PointG2` - object returned by the `aggregateSignatures` function
 - `messages: (Uint8Array | string | PointG2)[]` - messages hashes that needs to be verified
 - `publicKeys: (Uint8Array | string | PointG1)[]` - e.g. that were generated from `privateKeys` by `getPublicKey`
-- Returns `Promise<boolean>`: `true` / `false` whether the signature matches hashes
+- Returns `boolean`: `true` / `false` whether the signature matches hashes
 
 ##### `pairing(pointG1, pointG2)`
 ```typescript
@@ -235,51 +226,6 @@ The BLS parameters for the library are:
 
 Filecoin uses little endian byte arrays for private keys - so ensure to reverse byte order if you'll use it with FIL.
 
-## Speed
-
-To achieve the best speed out of all JS / Python implementations, the library employs optimizations:
-
-- cyclotomic exponentation
-- endomorphism for clearing cofactor
-- pairing precomputation
-
-Benchmarks measured with Apple M1:
-
-```
-getPublicKey x 598 ops/sec @ 1ms/op
-sign x 36 ops/sec @ 27ms/op
-verify x 28 ops/sec @ 35ms/op
-pairing x 69 ops/sec @ 14ms/op
-aggregatePublicKeys/8 x 84 ops/sec @ 11ms/op
-aggregateSignatures/8 x 40 ops/sec @ 24ms/op
-
-with compression / decompression disabled:
-sign/nc x 54 ops/sec @ 18ms/op
-verify/nc x 47 ops/sec @ 21ms/op
-aggregatePublicKeys/32 x 787 ops/sec @ 1ms/op
-aggregatePublicKeys/128 x 558 ops/sec @ 1ms/op
-aggregatePublicKeys/512 x 256 ops/sec @ 3ms/op
-aggregatePublicKeys/2048 x 81 ops/sec @ 12ms/op
-aggregateSignatures/32 x 452 ops/sec @ 2ms/op
-aggregateSignatures/128 x 240 ops/sec @ 4ms/op
-aggregateSignatures/512 x 81 ops/sec @ 12ms/op
-aggregateSignatures/2048 x 22 ops/sec @ 43ms/op
-```
-
-## Security
-
-Noble is production-ready.
-
-1. No public audits have been done yet. Our goal is to crowdfund the audit.
-2. It was developed in a similar fashion to
-[noble-secp256k1](https://github.com/paulmillr/noble-secp256k1), which **was** audited by a third-party firm.
-3. It was fuzzed by [Guido Vranken's cryptofuzz](https://github.com/guidovranken/cryptofuzz),
-no serious issues have been found. You can run the fuzzer by yourself to check it.
-
-We're using built-in JS `BigInt`, which is "unsuitable for use in cryptography" as [per official spec](https://github.com/tc39/proposal-bigint#cryptography). This means that the lib is potentially vulnerable to [timing attacks](https://en.wikipedia.org/wiki/Timing_attack). But, *JIT-compiler* and *Garbage Collector* make "constant time" extremely hard to achieve in a scripting language. Which means *any other JS library doesn't use constant-time bigints*. Including bn.js or anything else. Even statically typed Rust, a language without GC, [makes it harder to achieve constant-time](https://www.chosenplaintext.ca/open-source/rust-timing-shield/security) for some cases. If your goal is absolute security, don't use any JS lib — including bindings to native ones. Use low-level libraries & languages.
-
-We however consider infrastructure attacks like rogue NPM modules very important; that's why it's crucial to minimize the amount of 3rd-party dependencies & native bindings. If your app uses 500 dependencies, any dep could get hacked and you'll be downloading rootkits with every `npm install`. Our goal is to minimize this attack vector.
-
 ## Contributing
 
 1. Clone the repository.
@@ -287,8 +233,6 @@ We however consider infrastructure attacks like rogue NPM modules very important
 3. `npm run build` to compile TypeScript code
 4. `npm run test` to run jest on `test/index.ts`
 
-Special thanks to [Roman Koblov](https://github.com/romankoblov), who have helped to improve pairing speed.
-
 ## License
 
-MIT (c) Paul Miller [(https://paulmillr.com)](https://paulmillr.com), see LICENSE file.
+MIT (c) Paul Miller for [noble-bls12-381](https://github.com/paulmillr/noble-bls12-381).  

@@ -11,6 +11,7 @@
 // We are using Fp for private keys (shorter) and Fp2 for signatures (longer).
 // Some projects may prefer to swap this relation, it is not supported for now.
 // prettier-ignore
+import sha256 from "fast-sha256";
 import {
   Fp, Fr, Fp2, Fp12, CURVE, ProjectivePoint,
   map_to_curve_simple_swu_9mod16, isogenyMapG2,
@@ -30,23 +31,8 @@ const SHA256_DIGEST_SIZE = 32;
 let DST_LABEL = 'BLS_SIG_BLS12381G2_XMD:SHA-256_SSWU_RO_NUL_';
 
 export const utils = {
-  async sha256(message: Uint8Array): Promise<Uint8Array> {
-    // @ts-ignore
-    if (typeof self == 'object' && 'crypto' in self) {
-      // @ts-ignore
-      const buffer = await self.crypto.subtle.digest('SHA-256', message.buffer);
-      // @ts-ignore
-      return new Uint8Array(buffer);
-      // @ts-ignore
-    } else if (typeof process === 'object' && 'node' in process.versions) {
-      // @ts-ignore
-      const { createHash } = require('crypto');
-      const hash = createHash('sha256');
-      hash.update(message);
-      return Uint8Array.from(hash.digest());
-    } else {
-      throw new Error("The environment doesn't have sha256 function");
-    }
+  sha256(message: Uint8Array): Uint8Array {
+    return sha256(message);
   },
   randomBytes: (bytesLength: number = 32): Uint8Array => {
     // @ts-ignore
@@ -182,11 +168,11 @@ function strxor(a: Uint8Array, b: Uint8Array): Uint8Array {
 
 // Produces a uniformly random byte string using a cryptographic hash function H that outputs b bits
 // https://datatracker.ietf.org/doc/html/draft-irtf-cfrg-hash-to-curve-11#section-5.4.1
-async function expand_message_xmd(
+function expand_message_xmd(
   msg: Uint8Array,
   DST: Uint8Array,
   lenInBytes: number
-): Promise<Uint8Array> {
+): Uint8Array {
   const H = utils.sha256;
   const b_in_bytes = SHA256_DIGEST_SIZE;
   const r_in_bytes = b_in_bytes * 2;
@@ -197,11 +183,11 @@ async function expand_message_xmd(
   const Z_pad = i2osp(0, r_in_bytes);
   const l_i_b_str = i2osp(lenInBytes, 2);
   const b = new Array<Uint8Array>(ell);
-  const b_0 = await H(concatBytes(Z_pad, msg, l_i_b_str, i2osp(0, 1), DST_prime));
-  b[0] = await H(concatBytes(b_0, i2osp(1, 1), DST_prime));
+  const b_0 = H(concatBytes(Z_pad, msg, l_i_b_str, i2osp(0, 1), DST_prime));
+  b[0] = H(concatBytes(b_0, i2osp(1, 1), DST_prime));
   for (let i = 1; i <= ell; i++) {
     const args = [strxor(b_0, b[i - 1]), i2osp(i + 1, 1), DST_prime];
-    b[i] = await H(concatBytes(...args));
+    b[i] = H(concatBytes(...args));
   }
   const pseudo_random_bytes = concatBytes(...b);
   return pseudo_random_bytes.slice(0, lenInBytes);
@@ -211,17 +197,17 @@ async function expand_message_xmd(
 // degree - extension degree, 1 for Fp, 2 for Fp2
 // isRandomOracle - specifies NU or RO as per spec
 // https://datatracker.ietf.org/doc/html/draft-irtf-cfrg-hash-to-curve-11#section-5.3
-async function hash_to_field(
+function hash_to_field(
   msg: Uint8Array,
   degree: number,
   isRandomOracle = true
-): Promise<bigint[][]> {
+): bigint[][] {
   const count = isRandomOracle ? 2 : 1;
   const m = degree;
   const L = 64; // 64 for sha2, shake, sha3, blake
   const len_in_bytes = count * m * L;
   const DST = stringToBytes(DST_LABEL);
-  const pseudo_random_bytes = await expand_message_xmd(msg, DST, len_in_bytes);
+  const pseudo_random_bytes = expand_message_xmd(msg, DST, len_in_bytes);
   const u = new Array(count);
   for (let i = 0; i < count; i++) {
     const e = new Array(m);
@@ -399,9 +385,9 @@ export class PointG2 extends ProjectivePoint<Fp2> {
 
   // Encodes byte string to elliptic curve
   // https://datatracker.ietf.org/doc/html/draft-irtf-cfrg-hash-to-curve-11#section-3
-  static async hashToCurve(msg: Bytes) {
+  static hashToCurve(msg: Bytes) {
     msg = ensureBytes(msg);
-    const u = await hash_to_field(msg, 2);
+    const u = hash_to_field(msg, 2);
     //console.log(`hash_to_curve(msg}) u0=${new Fp2(u[0])} u1=${new Fp2(u[1])}`);
     const Q0 = new PointG2(...isogenyMapG2(map_to_curve_simple_swu_9mod16(u[0])));
     const Q1 = new PointG2(...isogenyMapG2(map_to_curve_simple_swu_9mod16(u[1])));
@@ -605,7 +591,7 @@ function normP1(point: G1Hex): PointG1 {
 function normP2(point: G2Hex): PointG2 {
   return point instanceof PointG2 ? point : PointG2.fromSignature(point);
 }
-async function normP2Hash(point: G2Hex): Promise<PointG2> {
+function normP2Hash(point: G2Hex): PointG2 {
   return point instanceof PointG2 ? point : PointG2.hashToCurve(point);
 }
 
@@ -618,11 +604,11 @@ export function getPublicKey(privateKey: PrivateKey): Uint8Array | string {
 
 // Executes `hashToCurve` on the message and then multiplies the result by private key.
 // S = pk x H(m)
-export async function sign(message: Uint8Array, privateKey: PrivateKey): Promise<Uint8Array>;
-export async function sign(message: string, privateKey: PrivateKey): Promise<string>;
-export async function sign(message: PointG2, privateKey: PrivateKey): Promise<PointG2>;
-export async function sign(message: G2Hex, privateKey: PrivateKey): Promise<Bytes | PointG2> {
-  const msgPoint = await normP2Hash(message);
+export function sign(message: Uint8Array, privateKey: PrivateKey): Uint8Array;
+export function sign(message: string, privateKey: PrivateKey): string;
+export function sign(message: PointG2, privateKey: PrivateKey): PointG2;
+export function sign(message: G2Hex, privateKey: PrivateKey): Bytes | PointG2 {
+  const msgPoint = normP2Hash(message);
   msgPoint.assertValidity();
   const sigPoint = msgPoint.multiply(normalizePrivKey(privateKey));
   if (message instanceof PointG2) return sigPoint;
@@ -632,9 +618,9 @@ export async function sign(message: G2Hex, privateKey: PrivateKey): Promise<Byte
 
 // Checks if pairing of public key & hash is equal to pairing of generator & signature.
 // e(P, H(m)) == e(G, S)
-export async function verify(signature: G2Hex, message: G2Hex, publicKey: G1Hex): Promise<boolean> {
+export function verify(signature: G2Hex, message: G2Hex, publicKey: G1Hex): boolean {
   const P = normP1(publicKey);
-  const Hm = await normP2Hash(message);
+  const Hm = normP2Hash(message);
   const G = PointG1.BASE;
   const S = normP2(signature);
   // Instead of doing 2 exponentiations, we use property of billinear maps
@@ -674,15 +660,15 @@ export function aggregateSignatures(signatures: G2Hex[]): Uint8Array | string | 
 
 // https://ethresear.ch/t/fast-verification-of-multiple-bls-signatures/5407
 // e(G, S) = e(G, SUM(n)(Si)) = MUL(n)(e(G, Si))
-export async function verifyBatch(
+export function verifyBatch(
   signature: G2Hex,
   messages: G2Hex[],
   publicKeys: G1Hex[]
-): Promise<boolean> {
+): boolean {
   if (!messages.length) throw new Error('Expected non-empty messages array');
   if (publicKeys.length !== messages.length) throw new Error('Pubkey count should equal msg count');
   const sig = normP2(signature);
-  const nMessages = await Promise.all(messages.map(normP2Hash));
+  const nMessages = messages.map(normP2Hash);
   const nPublicKeys = publicKeys.map(normP1);
   try {
     const paired = [];
