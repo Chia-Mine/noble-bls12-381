@@ -7,7 +7,8 @@
     "removeComments": true,
     "preserveConstEnums": true,
     "noUnusedLocals": true,
-    "noUnusedParameters": true
+    "noUnusedParameters": true,
+    "newLine": "lf"
   },
   "include": ["index.ts", "math.ts"]
 }

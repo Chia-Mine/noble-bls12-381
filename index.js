@@ -2,6 +2,7 @@
 /*! noble-bls12-381 - MIT License (c) Paul Miller (paulmillr.com) */
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.verifyBatch = exports.aggregateSignatures = exports.aggregatePublicKeys = exports.verify = exports.sign = exports.getPublicKey = exports.pairing = exports.PointG2 = exports.PointG1 = exports.utils = exports.CURVE = exports.Fp12 = exports.Fp2 = exports.Fr = exports.Fp = void 0;
+const fast_sha256_1 = require("fast-sha256");
 const math_1 = require("./math");
 Object.defineProperty(exports, "Fp", { enumerable: true, get: function () { return math_1.Fp; } });
 Object.defineProperty(exports, "Fr", { enumerable: true, get: function () { return math_1.Fr; } });
@@ -15,20 +16,8 @@ const PUBLIC_KEY_LENGTH = 48;
 const SHA256_DIGEST_SIZE = 32;
 let DST_LABEL = 'BLS_SIG_BLS12381G2_XMD:SHA-256_SSWU_RO_NUL_';
 exports.utils = {
-    async sha256(message) {
-        if (typeof self == 'object' && 'crypto' in self) {
-            const buffer = await self.crypto.subtle.digest('SHA-256', message.buffer);
-            return new Uint8Array(buffer);
-        }
-        else if (typeof process === 'object' && 'node' in process.versions) {
-            const { createHash } = require('crypto');
-            const hash = createHash('sha256');
-            hash.update(message);
-            return Uint8Array.from(hash.digest());
-        }
-        else {
-            throw new Error("The environment doesn't have sha256 function");
-        }
+    sha256(message) {
+        return fast_sha256_1.default(message);
     },
     randomBytes: (bytesLength = 32) => {
         if (typeof self == 'object' && 'crypto' in self) {
@@ -149,7 +138,7 @@ function strxor(a, b) {
     }
     return arr;
 }
-async function expand_message_xmd(msg, DST, lenInBytes) {
+function expand_message_xmd(msg, DST, lenInBytes) {
     const H = exports.utils.sha256;
     const b_in_bytes = SHA256_DIGEST_SIZE;
     const r_in_bytes = b_in_bytes * 2;
@@ -160,22 +149,22 @@ async function expand_message_xmd(msg, DST, lenInBytes) {
     const Z_pad = i2osp(0, r_in_bytes);
     const l_i_b_str = i2osp(lenInBytes, 2);
     const b = new Array(ell);
-    const b_0 = await H(concatBytes(Z_pad, msg, l_i_b_str, i2osp(0, 1), DST_prime));
-    b[0] = await H(concatBytes(b_0, i2osp(1, 1), DST_prime));
+    const b_0 = H(concatBytes(Z_pad, msg, l_i_b_str, i2osp(0, 1), DST_prime));
+    b[0] = H(concatBytes(b_0, i2osp(1, 1), DST_prime));
     for (let i = 1; i <= ell; i++) {
         const args = [strxor(b_0, b[i - 1]), i2osp(i + 1, 1), DST_prime];
-        b[i] = await H(concatBytes(...args));
+        b[i] = H(concatBytes(...args));
     }
     const pseudo_random_bytes = concatBytes(...b);
     return pseudo_random_bytes.slice(0, lenInBytes);
 }
-async function hash_to_field(msg, degree, isRandomOracle = true) {
+function hash_to_field(msg, degree, isRandomOracle = true) {
     const count = isRandomOracle ? 2 : 1;
     const m = degree;
     const L = 64;
     const len_in_bytes = count * m * L;
     const DST = stringToBytes(DST_LABEL);
-    const pseudo_random_bytes = await expand_message_xmd(msg, DST, len_in_bytes);
+    const pseudo_random_bytes = expand_message_xmd(msg, DST, len_in_bytes);
     const u = new Array(count);
     for (let i = 0; i < count; i++) {
         const e = new Array(m);
@@ -331,9 +320,9 @@ class PointG2 extends math_1.ProjectivePoint {
         assertType(y, math_1.Fp2);
         assertType(z, math_1.Fp2);
     }
-    static async hashToCurve(msg) {
+    static hashToCurve(msg) {
         msg = ensureBytes(msg);
-        const u = await hash_to_field(msg, 2);
+        const u = hash_to_field(msg, 2);
         const Q0 = new PointG2(...math_1.isogenyMapG2(math_1.map_to_curve_simple_swu_9mod16(u[0])));
         const Q1 = new PointG2(...math_1.isogenyMapG2(math_1.map_to_curve_simple_swu_9mod16(u[1])));
         const R = Q0.add(Q1);
@@ -501,7 +490,7 @@ function normP1(point) {
 function normP2(point) {
     return point instanceof PointG2 ? point : PointG2.fromSignature(point);
 }
-async function normP2Hash(point) {
+function normP2Hash(point) {
     return point instanceof PointG2 ? point : PointG2.hashToCurve(point);
 }
 function getPublicKey(privateKey) {
@@ -509,8 +498,8 @@ function getPublicKey(privateKey) {
     return typeof privateKey === 'string' ? bytesToHex(bytes) : bytes;
 }
 exports.getPublicKey = getPublicKey;
-async function sign(message, privateKey) {
-    const msgPoint = await normP2Hash(message);
+function sign(message, privateKey) {
+    const msgPoint = normP2Hash(message);
     msgPoint.assertValidity();
     const sigPoint = msgPoint.multiply(normalizePrivKey(privateKey));
     if (message instanceof PointG2)
@@ -519,9 +508,9 @@ async function sign(message, privateKey) {
     return typeof message === 'string' ? hex : hexToBytes(hex);
 }
 exports.sign = sign;
-async function verify(signature, message, publicKey) {
+function verify(signature, message, publicKey) {
     const P = normP1(publicKey);
-    const Hm = await normP2Hash(message);
+    const Hm = normP2Hash(message);
     const G = PointG1.BASE;
     const S = normP2(signature);
     const ePHm = pairing(P.negate(), Hm, false);
@@ -554,13 +543,13 @@ function aggregateSignatures(signatures) {
     return bytes;
 }
 exports.aggregateSignatures = aggregateSignatures;
-async function verifyBatch(signature, messages, publicKeys) {
+function verifyBatch(signature, messages, publicKeys) {
     if (!messages.length)
         throw new Error('Expected non-empty messages array');
     if (publicKeys.length !== messages.length)
         throw new Error('Pubkey count should equal msg count');
     const sig = normP2(signature);
-    const nMessages = await Promise.all(messages.map(normP2Hash));
+    const nMessages = messages.map(normP2Hash);
     const nPublicKeys = publicKeys.map(normP1);
     try {
         const paired = [];
